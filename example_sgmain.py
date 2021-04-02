@@ -230,46 +230,51 @@ class UserTrackMethodJniBridge(metaclass=JavaClassDef, jvm_name='com/alibaba/wir
 
 
 logger = logging.getLogger(__name__)
+def main():
+    # Initialize emulator
+    emulator = Emulator(
+        vfs_root=posixpath.join(posixpath.dirname(__file__), "vfs")
+    )
 
-# Initialize emulator
-emulator = Emulator(
-    vfs_root=posixpath.join(posixpath.dirname(__file__), "vfs")
-)
+    # Register Java class.
+    emulator.java_classloader.add_class(HttpUtil)
+    emulator.java_classloader.add_class(UmidAdapter)
+    emulator.java_classloader.add_class(JNICLibrary)
+    emulator.java_classloader.add_class(SPUtility2)
+    emulator.java_classloader.add_class(DeviceInfoCapturer)
 
-# Register Java class.
-emulator.java_classloader.add_class(HttpUtil)
-emulator.java_classloader.add_class(UmidAdapter)
-emulator.java_classloader.add_class(JNICLibrary)
-emulator.java_classloader.add_class(SPUtility2)
-emulator.java_classloader.add_class(DeviceInfoCapturer)
+    emulator.java_classloader.add_class(DataReportJniBridge)
 
-emulator.java_classloader.add_class(DataReportJniBridge)
+    emulator.java_classloader.add_class(ZipUtils)
 
-emulator.java_classloader.add_class(ZipUtils)
+    emulator.java_classloader.add_class(CallbackHelper)
 
-emulator.java_classloader.add_class(CallbackHelper)
+    emulator.java_classloader.add_class(UserTrackMethodJniBridge)
 
-emulator.java_classloader.add_class(UserTrackMethodJniBridge)
+    # Load all libraries.
+    lib_module = emulator.load_library("tests/bin/libsgmainso-5.4.38.so")
 
-# Load all libraries.
-lib_module = emulator.load_library("tests/bin/libsgmainso-5.4.38.so")
+    #androidemu.utils.debug_utils.dump_symbols(emulator, sys.stdout)
 
-#androidemu.utils.debug_utils.dump_symbols(emulator, sys.stdout)
+    # Show loaded modules.
+    logger.info("Loaded modules:")
 
-# Show loaded modules.
-logger.info("Loaded modules:")
+    for module in emulator.modules:
+        logger.info("=> 0x%08x - %s" % (module.base, module.filename))
 
-for module in emulator.modules:
-    logger.info("=> 0x%08x - %s" % (module.base, module.filename))
+    #emulator.mu.hook_add(UC_HOOK_CODE, hook_code, emulator)
 
-#emulator.mu.hook_add(UC_HOOK_CODE, hook_code, emulator)
+    try:
+        # Run JNI_OnLoad.
+        #   JNI_OnLoad will call 'RegisterNatives'.
+        emulator.call_symbol(lib_module, 'JNI_OnLoad', emulator.java_vm.address_ptr, 0x00)
 
-try:
-    # Run JNI_OnLoad.
-    #   JNI_OnLoad will call 'RegisterNatives'.
-    emulator.call_symbol(lib_module, 'JNI_OnLoad', emulator.java_vm.address_ptr, 0x00)
+    except UcError as e:
+        print("Exit at %x" % emulator.mu.reg_read(UC_ARM_REG_PC))
+        raise
 
-except UcError as e:
-    print("Exit at %x" % emulator.mu.reg_read(UC_ARM_REG_PC))
-    raise
 
+
+
+if __name__ == '__main__':
+    main()

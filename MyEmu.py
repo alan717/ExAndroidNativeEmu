@@ -16,39 +16,49 @@ import capstone
 import traceback
 
 g_cfd = ChainLogger(sys.stdout, "./ins-jni.txt")
+
+
 # Add debugging.
 def hook_code(mu, address, size, user_data):
     try:
         emu = user_data
         if (not emu.memory.check_addr(address, UC_PROT_EXEC)):
-            logger.error("addr 0x%08X out of range"%(address,))
+            logger.error("addr 0x%08X out of range" % (address,))
             sys.exit(-1)
         #
-        #androidemu.utils.debug_utils.dump_registers(mu, sys.stdout)
+        # androidemu.utils.debug_utils.dump_registers(mu, sys.stdout)
         androidemu.utils.debug_utils.dump_code(emu, address, size, g_cfd)
     except Exception as e:
         logger.exception("exception in hook_code")
         sys.exit(-1)
     #
+
+
 #
 
 def hook_mem_read(uc, access, address, size, value, user_data):
     pc = uc.reg_read(UC_ARM_REG_PC)
-    
+
     if (address == 0xCBC80640):
         logger.debug("read mutex")
         data = uc.mem_read(address, size)
         v = int.from_bytes(data, byteorder='little', signed=False)
-        logger.debug(">>> Memory READ at 0x%08X, data size = %u,  data value = 0x%08X, pc: 0x%08X," % (address, size, v, pc))
+        logger.debug(
+            ">>> Memory READ at 0x%08X, data size = %u,  data value = 0x%08X, pc: 0x%08X," % (address, size, v, pc))
     #
+
+
 #
 
 def hook_mem_write(uc, access, address, size, value, user_data):
     pc = uc.reg_read(UC_ARM_REG_PC)
     if (address == 0xCBC80640):
         logger.debug("write mutex")
-        logger.debug(">>> Memory WRITE at 0x%08X, data size = %u, data value = 0x%08X, pc: 0x%08X" % (address, size, value, pc))
+        logger.debug(
+            ">>> Memory WRITE at 0x%08X, data size = %u, data value = 0x%08X, pc: 0x%08X" % (address, size, value, pc))
     #
+
+
 #
 
 class MainActivity(metaclass=JavaClassDef, jvm_name='local/myapp/testnativeapp/MainActivity'):
@@ -66,6 +76,7 @@ class MainActivity(metaclass=JavaClassDef, jvm_name='local/myapp/testnativeapp/M
 
 logger = logging.getLogger(__name__)
 
+
 def main():
     # Initialize emulator
     emulator = Emulator(
@@ -80,9 +91,9 @@ def main():
     emulator.mu.hook_add(UC_HOOK_MEM_READ, hook_mem_read)
 
     # Load all libraries.
-    lib_module = emulator.load_library("tests/bin/libnative-lib_jni.so")
+    lib_module = emulator.load_library("tests/bin/libdc.so")
 
-    #androidemu.utils.debug_utils.dump_symbols(emulator, sys.stdout)
+    # androidemu.utils.debug_utils.dump_symbols(emulator, sys.stdout)
 
     # Show loaded modules.
     logger.info("Loaded modules:")
@@ -92,7 +103,7 @@ def main():
 
     try:
         # Run JNI_OnLoad.
-    #   JNI_OnLoad will call 'RegisterNatives'.
+        #   JNI_OnLoad will call 'RegisterNatives'.
         emulator.call_symbol(lib_module, 'JNI_OnLoad', emulator.java_vm.address_ptr, 0x00)
 
         # Do native stuff.
@@ -106,6 +117,7 @@ def main():
     except UcError as e:
         print("Exit at %x" % emulator.mu.reg_read(UC_ARM_REG_PC))
         raise
+
 
 if __name__ == '__main__':
     main()

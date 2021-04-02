@@ -168,7 +168,7 @@ class ELFReader:
             ehdr_bytes = f.read(ehdr32_sz)
             _, _ , _, _, _, phoff, _, _, _, _, phdr_num, _, _, _ = struct.unpack("<16sHHIIIIIHHHHHH", ehdr_bytes)
 
-            #print(phoff)
+            print(phoff)
             self.__phoff = phoff
             self.__phdr_num = phdr_num
             f.seek(phoff, 0)
