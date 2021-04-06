@@ -3,6 +3,7 @@ import os
 import sys
 
 from ..utils import memory_helpers,misc_utils
+from ..utils.misc_utils import get_segment_protection,page_end, page_start
 
 PT_NULL   = 0
 PT_LOAD   = 1
@@ -142,7 +143,7 @@ class ELFReader:
     #
 
     def __init__(self, filename):
-
+    # 既然要模拟运行就不要再使用任何静态分析的东西了。
         with open(filename, 'rb') as f:
             ehdr32_sz = 52
             phdr32_sz = 32
@@ -175,19 +176,30 @@ class ELFReader:
 
             dyn_off = 0
             self.__sz = 0
+            min_vaddr=0xFFFFFFFF
+            max_vaddr = 0x00000000
+
             for i in range(0, phdr_num):
                 phdr_bytes = f.read(phdr32_sz)
                 p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_flags, p_align = struct.unpack("<IIIIIIII", phdr_bytes)
                 phdr = {"p_type":p_type, "p_offset":p_offset, "p_vaddr":p_vaddr, "p_paddr":p_paddr, \
                                                 "p_filesz":p_filesz, "p_memsz":p_memsz, "p_flags":p_flags, "p_align":p_align}
+
                 self.__phdrs.append(phdr)
                 if (p_type == PT_DYNAMIC):
                     dyn_off = p_offset
                 #
                 elif(p_type == PT_LOAD):
                     self.__loads.append(phdr)
-                #
+                    if(p_vaddr<min_vaddr):
+                        min_vaddr=p_vaddr
+                    if(p_vaddr+p_memsz>max_vaddr):
+                        max_vaddr=p_vaddr+p_memsz
+                # ReserveAddressSpace
                 self.__sz += p_memsz
+                min_vaddr = page_start(min_vaddr);
+                max_vaddr = page_end(max_vaddr);
+                self._sz
             #
             assert dyn_off > 0, "error no dynamic in this elf."
             self.__dyn_off = dyn_off
@@ -202,172 +214,7 @@ class ELFReader:
             rel_count = 0
             relplt_off = 0
             relplt_count = 0
-            dt_needed = []
-            while True:
-                dyn_item_bytes = f.read(elf32_dyn_sz)
-                d_tag, d_val_ptr = struct.unpack("<II", dyn_item_bytes)
-                if (d_tag == DT_NULL):
-                    break
-                if (d_tag == DT_RELA):
-                    assert False, "64bit not support now"
-                elif (d_tag == DT_REL):
-                    rel_off = d_val_ptr
-                #
-                elif (d_tag == DT_RELSZ):
-                    rel_count = int(d_val_ptr / elf32_rel_sz)
-                #
-                elif (d_tag == DT_JMPREL):
-                    relplt_off = d_val_ptr
-                #
-                elif(d_tag == DT_PLTRELSZ):
-                    relplt_count = int(d_val_ptr / elf32_rel_sz)
-                #
-                elif (d_tag == DT_SYMTAB):
-                    dyn_sym_off = d_val_ptr
-                #
-                elif(d_tag == DT_STRTAB):
-                    dyn_str_off = d_val_ptr
-                #
-                elif(d_tag == DT_STRSZ):
-                    dyn_str_sz = d_val_ptr
-                #
-                elif(d_tag == DT_HASH):
-                    '''
-                    si->nbucket = ((unsigned *) (base + d->d_un.d_ptr))[0];
-                    si->nchain = ((unsigned *) (base + d->d_un.d_ptr))[1];
-                    si->bucket = (unsigned *) (base + d->d_un.d_ptr + 8);
-                    si->chain = (unsigned *) (base + d->d_un.d_ptr + 8 + si->nbucket * 4);
-                    '''
-                    n = f.tell()
-                    f.seek(d_val_ptr, 0)
-                    hash_heads = f.read(8)
-                    f.seek(n, 0)
-                    self.__nbucket, self.__nchain = struct.unpack("<II", hash_heads)
-                    self.__bucket = d_val_ptr + 8
-                    self.__chain = d_val_ptr + 8 + self.__nbucket * 4
-                    nsymbol = self.__nchain
-                #
-                elif(d_tag == DT_GNU_HASH):
-                    '''
-                    struct gnu_hash_table {
-                        uint32_t nbuckets;
-                        uint32_t symoffset;
-                        uint32_t bloom_size;
-                        uint32_t bloom_shift;
-                        uint32_t bloom[bloom_size]; /* uint32_t for 32-bit binaries */
-                        uint32_t buckets[nbuckets];
-                        uint32_t chain[];
-                    };
-                    '''
-                    #参考https://flapenguin.me/elf-dt-gnu-hash
-                    ori = f.tell()
-                    f.seek(d_val_ptr, 0)
-                    hash_heads = f.read(16)
-                    f.seek(ori, 0)
-                    gnu_nbucket_, symoffset, gnu_maskwords_, gnu_shift2_ = struct.unpack("<IIII", hash_heads)
-                    gnu_bloom_filter_ = d_val_ptr + 16
-                    gnu_bucket_ = gnu_bloom_filter_ + 4*gnu_maskwords_
 
-                    gnu_chain_ = gnu_bucket_ + 4*gnu_nbucket_ - 4*symoffset
-
-                    #gnuhash 的bucket是有序的,最后一个bucket存着最大的symid
-                    last_bucket_id = gnu_nbucket_ - 1
-                    
-                    symidx = 0
-                    f.seek(gnu_bucket_+4*last_bucket_id, 0)
-                    nbytes = f.read(4)
-                    symidx = int.from_bytes(nbytes, 'little')
-                    while True:
-                        #从最后一个bucket开始遍历,就是最后一个chain,找到chain结尾就是符号数量
-                        f.seek(gnu_chain_+4*symidx, 0)
-                        cbytes = f.read(4)
-                        c = int.from_bytes(cbytes, 'little')
-                        #Chain ends with an element with the lowest bit set to 1.
-                        if ((c & 1) == 1):
-                            break
-                        #
-                        symidx = symidx + 1
-                    #
-                    nsymbol = symidx + 1
-                    
-                    f.seek(ori, 0)
-                #
-                elif (d_tag == DT_INIT):
-                    self.__init_off = d_val_ptr
-                elif(d_tag == DT_INIT_ARRAY):
-                    self.__init_array_off = d_val_ptr
-                elif(d_tag == DT_INIT_ARRAYSZ):
-                    self.__init_array_size = d_val_ptr
-                #
-                elif (d_tag == DT_NEEDED):
-                    dt_needed.append(d_val_ptr)
-                #
-                elif (d_tag == DT_PLTGOT):
-                    self.__plt_got = d_val_ptr
-                #
-            #
-            # assert nsymbol > -1, "can not detect nsymbol by DT_HASH or DT_GNU_HASH, make sure their exist in so!!!"
-            self.__dyn_str_off = dyn_str_off
-            self.__dym_sym_off = dyn_sym_off
-
-            self.__dyn_str_sz = dyn_str_sz
-
-            self.__pltrel = relplt_off
-            self.__pltrel_count = relplt_count
-
-            self.__rel = rel_off
-            self.__rel_count = rel_count
-
-            f.seek(dyn_str_off)
-            self.__dyn_str_buf = f.read(dyn_str_sz)
-            
-            f.seek(dyn_sym_off, 0)
-            for i in range(0, nsymbol):
-                sym_bytes = f.read(elf32_sym_sz)
-                st_name, st_value, st_size, st_info, st_other, st_shndx = struct.unpack("<IIIccH", sym_bytes)
-                int_st_info = int.from_bytes(st_info, byteorder='little', signed = False)
-                st_info_bind = ELFReader.__elf_st_bind(int_st_info)
-                st_info_type = ELFReader.__elf_st_type(int_st_info)
-                name = ""
-                try:
-                    name = self.__st_name_to_name(st_name)
-                except UnicodeDecodeError as e:
-                    print("warning can not decode sym index %d at off 0x%08x skip"%(i, st_name))
-                #
-                d = {"name":name, "st_name":st_name, "st_value":st_value, "st_size":st_size, "st_info":st_info, "st_other":st_other, 
-                "st_shndx":st_shndx, "st_info_bind":st_info_bind, "st_info_type":st_info_type}
-                self.__dynsymols.append(d)
-            #
-
-            f.seek(rel_off, 0)
-            rel_table = []
-            for i in range(0, rel_count):
-                rel_item_bytes = f.read(elf32_rel_sz)
-                r_offset, r_info = struct.unpack("<II", rel_item_bytes)
-                d = {"r_offset":r_offset, "r_info":r_info}
-                r_info_sym = ELFReader.__elf32_r_sym(r_info)
-                r_info_type = ELFReader.__elf32_r_type(r_info)
-                d = {"r_offset":r_offset, "r_info":r_info, "r_info_type":r_info_type, "r_info_sym":r_info_sym}
-                rel_table.append(d)
-            #
-            self.__rels["dynrel"] = rel_table
-
-            f.seek(relplt_off, 0)
-            relplt_table = []
-            for i in range(0, relplt_count):
-                rel_item_bytes = f.read(elf32_rel_sz)
-                r_offset, r_info = struct.unpack("<II", rel_item_bytes)
-                r_info_sym = ELFReader.__elf32_r_sym(r_info)
-                r_info_type = ELFReader.__elf32_r_type(r_info)
-                d = {"r_offset":r_offset, "r_info":r_info, "r_info_type":r_info_type, "r_info_sym":r_info_sym}
-                relplt_table.append(d)
-            #
-            self.__rels["relplt"] = relplt_table
-            self.__so_needed = []
-            for str_off in dt_needed:
-                endId=self.__dyn_str_buf.find(b"\x00", str_off)
-                so_name = self.__dyn_str_buf[str_off:endId]
-                self.__so_needed.append(so_name.decode("utf-8"))
             #
         #
     #
@@ -402,7 +249,7 @@ class ELFReader:
     #
 
     def get_so_need(self):
-        return self.__so_needed
+        return None
     #
 
     #android 4.4.4 soinfo
