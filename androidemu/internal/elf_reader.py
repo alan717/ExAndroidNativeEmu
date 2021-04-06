@@ -306,7 +306,7 @@ class ELFReader:
                     self.__plt_got = d_val_ptr
                 #
             #
-            assert nsymbol > -1, "can not detect nsymbol by DT_HASH or DT_GNU_HASH, make sure their exist in so!!!"
+            # assert nsymbol > -1, "can not detect nsymbol by DT_HASH or DT_GNU_HASH, make sure their exist in so!!!"
             self.__dyn_str_off = dyn_str_off
             self.__dym_sym_off = dyn_sym_off
 
