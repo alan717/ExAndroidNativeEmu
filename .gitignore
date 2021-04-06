@@ -281,3 +281,4 @@ $RECYCLE.BIN/
 
 !/tests/test_binaries/test_native.so
 *.idb
+/ins-jni.txt
