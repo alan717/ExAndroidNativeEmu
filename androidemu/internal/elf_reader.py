@@ -196,10 +196,10 @@ class ELFReader:
                     if(p_vaddr+p_memsz>max_vaddr):
                         max_vaddr=p_vaddr+p_memsz
                 # ReserveAddressSpace
-                self.__sz += p_memsz
-                min_vaddr = page_start(min_vaddr);
-                max_vaddr = page_end(max_vaddr);
-                self._sz
+                # self.__sz += p_memsz
+            min_vaddr = page_start(min_vaddr)
+            max_vaddr = page_end(max_vaddr)
+            self._sz=max_vaddr-min_vaddr
             #
             assert dyn_off > 0, "error no dynamic in this elf."
             self.__dyn_off = dyn_off
