@@ -170,7 +170,7 @@ class Modules:
         init_array_offset, init_array_size = reader.get_init_array()
         init_array = []
         init_offset = reader.get_init()
-
+        memory_helpers.read_utf8(self.emu, path_ptr)
         so_needed = reader.get_so_need()
         for so_name in so_needed:
             path = misc_utils.vfs_path_to_system_path(self.__vfs_root, so_name)

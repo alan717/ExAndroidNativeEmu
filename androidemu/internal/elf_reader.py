@@ -187,7 +187,7 @@ class ELFReader:
 
                 self.__phdrs.append(phdr)
                 if (p_type == PT_DYNAMIC):
-                    dyn_off = p_offset
+                    dyn_off = p_vaddr
                 #
                 elif(p_type == PT_LOAD):
                     self.__loads.append(phdr)
