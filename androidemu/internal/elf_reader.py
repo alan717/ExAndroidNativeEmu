@@ -159,6 +159,7 @@ class ELFReader:
             self.__nchain = 0
             self.__bucket = 0
             self.__chain = 0
+            self.__dt_needed=[]
 
 
             self.__phdrs = []
@@ -218,10 +219,66 @@ class ELFReader:
             #
         #
     #
+    def parse_dynamic(self,mu,load_base):
+        offset=self.__dyn_off
+        dyn_str_off=0
+        dyn_str_sz=0
+        nsymbol=0
+        while True:
+            data = memory_helpers.read_byte_array(mu, load_base + offset, 8)
+            d_tag, d_val_ptr = struct.unpack("<II", data)
+            if (d_tag == DT_NULL):
+                break
+            elif(d_tag==DT_RELA):
+                assert  False,"64 bit not support now."
+            elif(d_tag==DT_REL):
+                rel_off=d_val_ptr
+            elif(d_tag==DT_RELASZ):
+                rel_count=int(d_val_ptr/8)
+            elif(d_tag==DT_JMPREL):
+                relplt_off=d_val_ptr
+            elif(d_tag==DT_SYMTAB):
+                dyn_sym_off=d_val_ptr
+            elif(d_tag==DT_STRTAB):
+                dyn_str_off=d_val_ptr
+            elif(d_tag==DT_STRSZ):
+                dyn_str_sz=d_val_ptr
+            elif(d_tag==DT_HASH):
+                hash_data=memory_helpers.read_byte_array(mu, load_base + d_val_ptr, 8)
+                self.__nbucket,self.__nchain=struct.unpack("<II",hash_data)
+                self.__bucket=d_val_ptr+8
+                self.__chain=d_val_ptr+8+self.__nbucket*4
+                nsymbol=self.__nchain
+            elif(d_tag==DT_GNU_HASH):
+                pass
+            elif(d_tag==DT_INIT):
+                self.__init_off=d_val_ptr
+            elif(d_tag==DT_INIT_ARRAY):
+                self.__init_array_off=d_val_ptr
+            elif(d_tag==DT_INIT_ARRAYSZ):
+                self.__init_array_size=d_val_ptr
+            elif(d_tag==DT_NEEDED):
+                self.__dt_needed.append(d_val_ptr)
+            elif(d_tag==DT_PLTGOT):
+                self.__plt_got=d_val_ptr
+            offset+=8
+        # 首先读取str table.
+        self.__dyn_str_buf=memory_helpers.read_byte_array(mu,load_base+dyn_str_off,dyn_str_sz)
+        # 解析符号表
+        # for i in range(0,nsymbol):
+            
+
+
+
+
+
+
 
     def get_load(self):
         return self.__loads
     #
+    def get_dynamic(self):
+        return self.__dyn_off
 
     def get_symbols(self):
         return self.__dynsymols
