@@ -1,11 +1,11 @@
 import logging
 
-from unicorn import UC_PROT_ALL,UC_PROT_WRITE,UC_PROT_READ
+from unicorn import UC_PROT_ALL, UC_PROT_WRITE, UC_PROT_READ
 
 from . import arm
-from ..utils.misc_utils import get_segment_protection,page_end, page_start
+from ..utils.misc_utils import get_segment_protection, page_end, page_start
 from .module import Module
-from ..utils import memory_helpers,misc_utils
+from ..utils import memory_helpers, misc_utils
 from ..vfs.virtual_file import VirtualFile
 from .. import config
 from . import elf_reader
@@ -14,20 +14,22 @@ import struct
 
 logger = logging.getLogger(__name__)
 
+
 class Modules:
     """
     :type emu androidemu.emulator.Emulator
     :type modules list[Module]
     """
+
     def __init__(self, emu, vfs_root):
         self.emu = emu
         self.modules = list()
         self.symbol_hooks = dict()
         self.counter_memory = config.BASE_ADDR
         self.__vfs_root = vfs_root
-        soinfo_area_sz = 0x40000; 
+        soinfo_area_sz = 0x40000;
         self.__soinfo_area_base = emu.memory.map(0, soinfo_area_sz, UC_PROT_WRITE | UC_PROT_READ)
-        
+
     #
 
     def add_symbol_hook(self, symbol_name, addr):
@@ -51,6 +53,7 @@ class Modules:
             if module.base == addr:
                 return module
         return None
+
     #
 
     def find_module_by_name(self, filename):
@@ -61,13 +64,15 @@ class Modules:
                 return m
             #
         #
+
     #
-    
+
     def mem_reserve(self, start, end):
         size_aligned = page_end(end) - page_start(start)
         ret = self.counter_memory
         self.counter_memory += size_aligned
         return ret
+
     #
 
     def load_module(self, filename, do_init=True):
@@ -76,7 +81,7 @@ class Modules:
             return m
         #
         logger.debug("Loading module '%s'." % filename)
-        #do sth like linker
+        # do sth like linker
         reader = elf_reader.ELFReader(filename)
 
         # Parse program header (Execution view).
@@ -130,12 +135,13 @@ class Modules:
         # Retrieve a base address for this module.
         load_base = self.mem_reserve(bound_low, bound_high)
 
-        vf = VirtualFile(misc_utils.system_path_to_vfs_path(self.__vfs_root, filename), misc_utils.my_open(filename, os.O_RDONLY), filename)
+        vf = VirtualFile(misc_utils.system_path_to_vfs_path(self.__vfs_root, filename),
+                         misc_utils.my_open(filename, os.O_RDONLY), filename)
         for segment in load_segments:
             p_flags = segment["p_flags"]
             prot = get_segment_protection(p_flags)
             prot = prot if prot != 0 else UC_PROT_ALL
-            
+
             p_vaddr = segment["p_vaddr"]
             seg_start = load_base + p_vaddr
             seg_page_start = page_start(seg_start)
@@ -145,15 +151,15 @@ class Modules:
             file_end = file_start + p_filesz
             file_page_start = page_start(file_start)
             file_length = file_end - file_page_start
-            assert(file_length>0)
+            assert (file_length > 0)
             if (file_length > 0):
                 self.emu.memory.map(seg_page_start, file_length, prot, vf, file_page_start)
             #
             p_memsz = segment["p_memsz"]
-            seg_end   = seg_start + p_memsz
+            seg_end = seg_start + p_memsz
             seg_page_end = page_end(seg_end)
 
-            seg_file_end = seg_start+p_filesz
+            seg_file_end = seg_start + p_filesz
 
             seg_file_end = page_end(seg_file_end)
             '''
@@ -164,7 +170,7 @@ class Modules:
                         -1,
                         0);
             '''
-            self.emu.memory.map(seg_file_end, seg_page_end-seg_file_end, prot)
+            self.emu.memory.map(seg_file_end, seg_page_end - seg_file_end, prot)
         #
 
         # Find init array.
@@ -172,14 +178,14 @@ class Modules:
         init_array = []
         init_offset = reader.get_init()
 
-        #pase_dynmaic
-        reader.parse_dynamic(self.emu.mu,load_base)
+        # parse_dynamic
+        reader.parse_dynamic(self.emu.mu, load_base)
 
         so_needed = reader.get_so_need()
         for so_name in so_needed:
             path = misc_utils.vfs_path_to_system_path(self.__vfs_root, so_name)
             if (not os.path.exists(path)):
-                logger.warn("%s needed by %s do not exist in vfs %s"%(so_name, filename, self.__vfs_root))
+                logger.warn("%s needed by %s do not exist in vfs %s" % (so_name, filename, self.__vfs_root))
                 continue
             #
             libmod = self.load_module(path)
@@ -210,8 +216,8 @@ class Modules:
                 rel_addr = load_base + rel['r_offset']  # Location where relocation should happen
                 rel_info_type = rel['r_info_type']
 
-                #print(filename)
-                #print("%x"%rel_addr)
+                # print(filename)
+                # print("%x"%rel_addr)
                 # Relocation table for ARM
 
                 sym_name = reader.get_dyn_string_by_rel_sym(r_info_sym)
@@ -222,24 +228,24 @@ class Modules:
                         value_orig_bytes = self.emu.mu.mem_read(rel_addr, 4)
                         value_orig = int.from_bytes(value_orig_bytes, byteorder='little')
 
-                        #R_ARM_ABS32 how to relocate see android linker source code
-                        #*reinterpret_cast<Elf32_Addr*>(reloc) += sym_addr;
+                        # R_ARM_ABS32 how to relocate see android linker source code
+                        # *reinterpret_cast<Elf32_Addr*>(reloc) += sym_addr;
                         value = sym_addr + value_orig
                         # Write the new value
-                        #print(value)
+                        # print(value)
                         self.emu.mu.mem_write(rel_addr, value.to_bytes(4, byteorder='little'))
                     #
                 #
-                elif rel_info_type in (arm.R_ARM_GLOB_DAT, arm.R_ARM_JUMP_SLOT, 
-                                                arm.R_AARCH64_GLOB_DAT, arm.R_AARCH64_JUMP_SLOT):
+                elif rel_info_type in (arm.R_ARM_GLOB_DAT, arm.R_ARM_JUMP_SLOT,
+                                       arm.R_AARCH64_GLOB_DAT, arm.R_AARCH64_JUMP_SLOT):
                     # Resolve the symbol.
-                    #R_ARM_GLOB_DAT，R_ARM_JUMP_SLOT how to relocate see android linker source code
-                    #*reinterpret_cast<Elf32_Addr*>(reloc) = sym_addr;
+                    # R_ARM_GLOB_DAT，R_ARM_JUMP_SLOT how to relocate see android linker source code
+                    # *reinterpret_cast<Elf32_Addr*>(reloc) = sym_addr;
                     if sym_name in symbols_resolved:
                         value = symbols_resolved[sym_name]
 
                         # Write the new value
-                        #print(value)
+                        # print(value)
                         self.emu.mu.mem_write(rel_addr, value.to_bytes(4, byteorder='little'))
                     #
                 #
@@ -252,7 +258,7 @@ class Modules:
                         # Create the new value
                         value = load_base + value_orig
 
-                        #print(value)
+                        # print(value)
                         # Write the new value
                         self.emu.mu.mem_write(rel_addr, value.to_bytes(4, byteorder='little'))
                     else:
@@ -263,25 +269,26 @@ class Modules:
             #
         #
         if (init_offset != 0):
-            init_array.append(load_base+init_offset)
+            init_array.append(load_base + init_offset)
         #
         for _ in range(int(init_array_size / 4)):
-            b = self.emu.mu.mem_read(load_base+init_array_offset, 4)
-            fun_ptr = int.from_bytes(b, byteorder='little', signed = False)
+            b = self.emu.mu.mem_read(load_base + init_array_offset, 4)
+            fun_ptr = int.from_bytes(b, byteorder='little', signed=False)
             if (fun_ptr != 0):
                 init_array.append(fun_ptr)
             #
             init_array_offset += 4
         #
-        
+
         write_sz = reader.write_soinfo(self.emu.mu, load_base, self.__soinfo_area_base)
 
         # Store information about loaded module.
-        module = Module(filename, load_base, bound_high - bound_low, symbols_resolved, init_array, self.__soinfo_area_base)
+        module = Module(filename, load_base, bound_high - bound_low, symbols_resolved, init_array,
+                        self.__soinfo_area_base)
         self.modules.append(module)
-        
+
         self.__soinfo_area_base += write_sz
-        #TODO init tls like linker
+        # TODO init tls like linker
         '''
         void __libc_init_tls(KernelArgumentBlock& args) {
             __libc_auxv = args.auxv;
@@ -307,8 +314,9 @@ class Modules:
             '''
             module.call_init(self.emu)
         #
-        logger.info("finish load lib %s base 0x%08X"%(filename, load_base))
+        logger.info("finish load lib %s base 0x%08X" % (filename, load_base))
         return module
+
     #
 
     def _elf_get_symval(self, elf_base, symbol):
@@ -325,7 +333,7 @@ class Modules:
                     # Weak symbol initialized as 0
                     return 0
                 else:
-                    logger.error('=> Undefined external symbol: %s' %name)
+                    logger.error('=> Undefined external symbol: %s' % name)
                     return None
             else:
                 return target
@@ -336,6 +344,7 @@ class Modules:
             # Internally defined symbol.
             return elf_base + symbol['st_value']
         #
+
     #
 
     def _elf_lookup_symbol(self, name):
@@ -348,6 +357,7 @@ class Modules:
             #
         #
         return None
+
     #
 
     def __iter__(self):
