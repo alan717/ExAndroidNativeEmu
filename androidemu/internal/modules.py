@@ -190,7 +190,7 @@ class Modules:
             #
             libmod = self.load_module(path)
         #
-
+        reader.relocate(self.emu.mu,load_base)
         rels = reader.get_rels()
         symbols = reader.get_symbols()
         # Resolve all symbols.
