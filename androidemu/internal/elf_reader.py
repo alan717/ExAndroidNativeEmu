@@ -155,6 +155,7 @@ class ELFReader:
         self.rel_count = 0
         self.rel_off=0
         self.pltrel_off=0
+        self.dyn_sym_off=0
         with open(filename, 'rb') as f:
             ehdr32_sz = 52
             phdr32_sz = 32
@@ -251,7 +252,7 @@ class ELFReader:
             elif d_tag == DT_JMPREL:
                 self.pltrel_off = d_val_ptr
             elif d_tag == DT_SYMTAB:
-                dyn_sym_off = d_val_ptr
+                self.dyn_sym_off = d_val_ptr
             elif d_tag == DT_STRTAB:
                 dyn_str_off = d_val_ptr
             elif d_tag == DT_STRSZ:
@@ -261,7 +262,7 @@ class ELFReader:
                 self.__nbucket, self.__nchain = struct.unpack("<II", hash_data)
                 self.__bucket = d_val_ptr + 8
                 self.__chain = d_val_ptr + 8 + self.__nbucket * 4
-                nsymbol = self.__nchain
+                self.nsymbol = self.__nchain
             elif d_tag == DT_GNU_HASH:
                 pass
             elif (d_tag == DT_INIT):
@@ -283,7 +284,7 @@ class ELFReader:
             self.__so_needed.append(so_name.decode("utf-8"))
 
     # parse rel.
-    def relocate(self,mu,load_base):
+    def parse_relo(self,mu,load_base):
         relplt_table = []
         for i in range(0, self.rel_count):
             rel_item_bytes = memory_helpers.read_byte_array(mu, load_base + self.pltrel_off, 8)
@@ -304,6 +305,23 @@ class ELFReader:
             rel_table.append(d)
         self.__rels["dynrel"] = rel_table
 
+    def parse_sym(self, mu, load_base):
+        for i in range(0, self.nsymbol):
+            sym_bytes = memory_helpers.read_byte_array(mu, load_base + self.dyn_sym_off, 16)
+            st_name, st_value, st_size, st_info, st_other, st_shndx = struct.unpack("<IIIccH", sym_bytes)
+            int_st_info = int.from_bytes(st_info, byteorder='little', signed=False)
+            st_info_bind = ELFReader.__elf_st_bind(int_st_info)
+            st_info_type = ELFReader.__elf_st_type(int_st_info)
+            name = ""
+            try:
+                name = self.__st_name_to_name(st_name)
+            except UnicodeDecodeError as e:
+                print("warning can not decode sym index %d at off 0x%08x skip" % (i, st_name))
+            #
+            d = {"name": name, "st_name": st_name, "st_value": st_value, "st_size": st_size, "st_info": st_info,
+                 "st_other": st_other,
+                 "st_shndx": st_shndx, "st_info_bind": st_info_bind, "st_info_type": st_info_type}
+            self.__dynsymols.append(d)
 
     def get_load(self):
         return self.__loads
