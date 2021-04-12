@@ -104,7 +104,7 @@ def main():
     try:
         # Run JNI_OnLoad.
         #   JNI_OnLoad will call 'RegisterNatives'.
-        emulator.call_symbol(lib_module, 'JNI_OnLoad', emulator.java_vm.address_ptr, 0x00)
+        emulator.call_symbol(lib_module, '.init_proc', 00)
 
         # Do native stuff.
         main_activity = MainActivity()

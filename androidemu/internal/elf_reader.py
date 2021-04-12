@@ -235,7 +235,7 @@ class ELFReader:
     def parse_dynamic(self, mu, load_base):
         offset = self.__dyn_off
         dyn_str_off = 0
-        dyn_str_sz = 0
+
         nsymbol = 0
         dt_needed = []
         while True:
@@ -247,25 +247,31 @@ class ELFReader:
                 assert False, "64 bit not support now."
             elif d_tag == DT_REL:
                 self.rel_off = d_val_ptr
+                self.__rel=d_val_ptr
             elif d_tag == DT_RELSZ:
                 self.rel_count = int(d_val_ptr / 8)
+                self.__rel_count=self.rel_count
             elif d_tag == DT_JMPREL:
                 self.pltrel_off = d_val_ptr
+            elif d_tag== DT_PLTRELSZ:
+                self.__pltrel_count = int(d_val_ptr / 8)
             elif d_tag == DT_SYMTAB:
                 self.dyn_sym_off = d_val_ptr
             elif d_tag == DT_STRTAB:
                 dyn_str_off = d_val_ptr
             elif d_tag == DT_STRSZ:
-                dyn_str_sz = d_val_ptr
+                self.__dyn_str_sz = d_val_ptr
             elif d_tag == DT_HASH:
                 hash_data = memory_helpers.read_byte_array(mu, load_base + d_val_ptr, 8)
                 self.__nbucket, self.__nchain = struct.unpack("<II", hash_data)
                 self.__bucket = d_val_ptr + 8
+                hash_data = memory_helpers.read_byte_array(mu, load_base + self.__bucket, 4)
                 self.__chain = d_val_ptr + 8 + self.__nbucket * 4
+                hash_data = memory_helpers.read_byte_array(mu, load_base + self.__chain, 4)
                 self.nsymbol = self.__nchain
             elif d_tag == DT_GNU_HASH:
                 pass
-            elif (d_tag == DT_INIT):
+            elif d_tag == DT_INIT:
                 self.__init_off = d_val_ptr
             elif d_tag == DT_INIT_ARRAY:
                 self.__init_array_off = d_val_ptr
@@ -276,15 +282,21 @@ class ELFReader:
             elif d_tag == DT_PLTGOT:
                 self.__plt_got = d_val_ptr
             offset += 8
-        # 首先读取str table.
-        self.__dyn_str_buf = memory_helpers.read_byte_array(mu, load_base + dyn_str_off, dyn_str_sz)
+
+        self.__dyn_str_off=dyn_str_off
+        self.__dym_sym_off=self.dyn_sym_off
+        self.__pltrel=self.pltrel_off
+
+
+        # prepare so need.
+        self.__dyn_str_buf = memory_helpers.read_byte_array(mu, load_base + dyn_str_off, self.__dyn_str_sz)
         for str_off in dt_needed:
             endId = self.__dyn_str_buf.find(b"\x00", str_off)
             so_name = self.__dyn_str_buf[str_off:endId]
             self.__so_needed.append(so_name.decode("utf-8"))
 
     # parse rel.
-    def parse_relo(self,mu,load_base):
+    def prepare_relo(self,mu,load_base):
         relplt_table = []
         for i in range(0, self.rel_count):
             rel_item_bytes = memory_helpers.read_byte_array(mu, load_base + self.pltrel_off, 8)
@@ -304,8 +316,8 @@ class ELFReader:
             d = {"r_offset": r_offset, "r_info": r_info, "r_info_type": r_info_type, "r_info_sym": r_info_sym}
             rel_table.append(d)
         self.__rels["dynrel"] = rel_table
-
-    def parse_sym(self, mu, load_base):
+    #准备symbol table数据结构
+    def prepare_sym(self, mu, load_base):
         for i in range(0, self.nsymbol):
             sym_bytes = memory_helpers.read_byte_array(mu, load_base + self.dyn_sym_off, 16)
             st_name, st_value, st_size, st_info, st_other, st_shndx = struct.unpack("<IIIccH", sym_bytes)
@@ -322,6 +334,7 @@ class ELFReader:
                  "st_other": st_other,
                  "st_shndx": st_shndx, "st_info_bind": st_info_bind, "st_info_type": st_info_type}
             self.__dynsymols.append(d)
+            self.dyn_sym_off+=16
 
     def get_load(self):
         return self.__loads

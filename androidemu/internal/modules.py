@@ -173,25 +173,27 @@ class Modules:
             self.emu.memory.map(seg_file_end, seg_page_end - seg_file_end, prot)
         #
 
-        # Find init array.
-        init_array_offset, init_array_size = reader.get_init_array()
-        init_array = []
-        init_offset = reader.get_init()
+
 
         # parse_dynamic
         reader.parse_dynamic(self.emu.mu, load_base)
 
         so_needed = reader.get_so_need()
+        print("so need：" + str(so_needed))
         for so_name in so_needed:
             path = misc_utils.vfs_path_to_system_path(self.__vfs_root, so_name)
             if (not os.path.exists(path)):
                 logger.warn("%s needed by %s do not exist in vfs %s" % (so_name, filename, self.__vfs_root))
                 continue
             #
-            libmod = self.load_module(path)
-        #
-        reader.parse_relo(self.emu.mu,load_base)
-        reader.parse_sym(self.emu.mu,load_base)
+            libmod = self.load_module(path,False)
+
+        # 首先拿到sym数据结构.
+        reader.prepare_sym(self.emu.mu, load_base)
+        #解析rel plt
+        reader.prepare_relo(self.emu.mu,load_base)
+
+
         rels = reader.get_rels()
         symbols = reader.get_symbols()
         # Resolve all symbols.
@@ -268,6 +270,10 @@ class Modules:
                     logger.error("Unhandled relocation type %i." % rel_info_type)
                 #
             #
+        # Find init array.
+        init_array_offset, init_array_size = reader.get_init_array()
+        init_array = []
+        init_offset = reader.get_init()
         #
         if (init_offset != 0):
             init_array.append(load_base + init_offset)
