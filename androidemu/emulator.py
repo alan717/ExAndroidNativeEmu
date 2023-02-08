@@ -177,7 +177,8 @@ class Emulator:
     def load_library(self, filename, do_init=True):
         libmod = self.modules.load_module(filename, True)
         return libmod
-
+    def load_exec(self,filename,do_init=True):
+        execbin=self.modules
     def call_symbol(self, module, symbol_name, *argv):
         symbol_addr = module.find_symbol(symbol_name)
 

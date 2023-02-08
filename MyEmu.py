@@ -91,7 +91,7 @@ def main():
     emulator.mu.hook_add(UC_HOOK_MEM_READ, hook_mem_read)
 
     # Load all libraries.
-    lib_module = emulator.load_library("tests/bin/libDexHelper.so")
+    lib_module = emulator.load_library("vfs/bin/CONTROLSTORM")
 
     # androidemu.utils.debug_utils.dump_symbols(emulator, sys.stdout)
 

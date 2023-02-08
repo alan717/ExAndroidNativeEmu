@@ -282,7 +282,7 @@ class Modules:
             b = self.emu.mu.mem_read(load_base + init_array_offset, 4)
             fun_ptr = int.from_bytes(b, byteorder='little', signed=False)
             if (fun_ptr != 0):
-                init_array.append(fun_ptr)
+                init_array.append(load_base+fun_ptr)
             #
             init_array_offset += 4
         #
